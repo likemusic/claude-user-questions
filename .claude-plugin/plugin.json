@@ -1,0 +1,11 @@
+{
+  "name": "user-questions",
+  "version": "0.1.0",
+  "description": "Очередь вопросов сессии к пользователю: панель, строка статуса, /questions и /next-question, сводка по всем сессиям",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "likemusic"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/likemusic/claude-user-questions"
+}
