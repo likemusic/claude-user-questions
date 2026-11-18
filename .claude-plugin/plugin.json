@@ -1,6 +1,6 @@
 {
   "name": "user-questions",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Очередь вопросов сессии к пользователю: панель, строка статуса, /questions и /next-question",
   "types": "./types/index.d.ts",
   "author": {

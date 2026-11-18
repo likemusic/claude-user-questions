@@ -42,7 +42,8 @@ test('a question is queued, listed and taken one by one', async ($, on) => {
   expect(after.text).toContain('из 1')
 
   const closed = await $.command.run({ command: 'questions', args: 'close 2' } as never)
-  expect(closed.text).toBe('Вопрос #2 закрыт.')
+  expect(closed.text).toBe('Вопрос #2 закрыт без ответа.')
+  expect(closed.context?.[0]).toContain('рекомендованному варианту')
   const empty = await $.command.run({ command: 'questions', args: '' } as never)
   expect(empty.text).toContain('открытых вопросов к тебе нет')
 })
