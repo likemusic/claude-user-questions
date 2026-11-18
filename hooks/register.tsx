@@ -135,8 +135,8 @@ export const register: Register = on => {
 
     await $.command.register({
       name: 'questions',
-      description: 'Вопросы этой сессии ко мне. pane — панель; close N [ответ] — закрыть вопрос N, с ответом или без',
-      argumentHint: '[pane | close N [ответ]]',
+      description: 'Вопросы этой сессии ко мне; pane — открыть панель',
+      argumentHint: '[pane]',
       immediate: true,
     })
     await $.command.register({
@@ -196,27 +196,13 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'questions' }, async ($, e) => {
-    const [verb = '', arg = ''] = e.args.trim().split(/\s+/)
+    const verb = e.args.trim()
     const now = Date.now()
 
     if (verb === 'pane') {
       await openPane($)
       return { text: 'Панель вопросов открыта.', isTextDisplayOnly: true as const }
     }
-    if (verb === 'close') {
-      const note = e.args.trim().split(/\s+/).slice(2).join(' ')
-      const ok = await resolve($, Number(arg), note === '' ? 'dropped' : 'answered', note === '' ? 'снят пользователем без ответа' : note)
-      const context =
-        note === ''
-          ? `Пользователь снял вопрос #${arg} без ответа. Если решение по нему тебе всё ещё нужно, действуй по своему рекомендованному варианту и одной строкой скажи, что выбрал. Заново этот вопрос не задавай.`
-          : `Пользователь ответил на вопрос #${arg} командой: «${note}». Действуй по этому ответу.`
-      return {
-        text: ok ? `Вопрос #${arg} закрыт${note === '' ? ' без ответа' : ''}.` : `Открытого вопроса #${arg} нет.`,
-        isTextDisplayOnly: true as const,
-        context: ok ? [context] : [],
-      }
-    }
-
     const open = sortOpen(await read($, questions))
     const out: string[] = [
       open.length === 0 ? 'В этой сессии открытых вопросов к тебе нет.' : `Вопросов в этой сессии: ${open.length}`,
@@ -252,7 +238,7 @@ export const register: Register = on => {
       q.text,
       ...(q.why ? ['', `Зачем: ${q.why}`] : []),
       '',
-      'Ответь сообщением. Дальше: /next-question; отложить: /next-question skip; снять без ответа (сессия решит по своей рекомендации): /questions close ' + q.id,
+      'Ответь сообщением. Дальше: /next-question; отложить: /next-question skip',
     ].join('\n')
     return {
       text,
