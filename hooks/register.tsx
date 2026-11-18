@@ -1,14 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { OtherSession, Priority, Question, Status } from '../types'
+import type { Priority, Question, Status } from '../types'
 
 const PLUGIN = 'user-questions'
 const PANE = 'user-questions'
-const STALE_MS = 14 * 24 * 3600 * 1000
 
 const questions = atom({ plugin: 'user-questions', key: 'questions' } as const, [], { shape: 'q-1' })
-const others = atom({ plugin: 'user-questions', key: 'others' } as const, [], { shape: 'o-1' })
 const focus = atom({ plugin: 'user-questions', key: 'focus' } as const, 0)
 
 const PRIO_RANK: Record<Priority, number> = { high: 0, normal: 1, low: 2 }
@@ -16,7 +14,7 @@ const PRIO_MARK: Record<Priority, string> = { high: '!!', normal: '! ', low: '·
 
 const GUIDE = `# Очередь вопросов к пользователю (мод user-questions)
 
-Пользователь ведёт много параллельных сессий и разбирает вопросы к себе по очереди, командами /questions и /next-question. Поэтому каждый вопрос, на который нужен ответ пользователя (решение, недостающий факт, подтверждение необратимого действия), в том числе вопрос соседней сессии, который адресован пользователю и пришёл через тебя, регистрируй инструментом mcp__user-questions__add_question. В тексте ответа его тоже можно задать, как обычно.
+Пользователь ведёт много параллельных сессий и разбирает вопросы каждой сессии к себе по очереди, командами /questions и /next-question. Поэтому каждый вопрос, на который нужен ответ пользователя (решение, недостающий факт, подтверждение необратимого действия), в том числе вопрос соседней сессии, который адресован пользователю и пришёл через тебя, регистрируй инструментом mcp__user-questions__add_question. В тексте ответа его тоже можно задать, как обычно.
 
 - Один вызов — один вопрос. Формулировка самодостаточная: её прочитают позже, без прокрутки истории. Укажи, о каком проекте, файле или задаче речь, какие есть варианты и какой ты рекомендуешь.
 - priority: high — без ответа стоит важная работа или есть риск; normal — обычный; low — можно ответить когда угодно. blocking: true, если без ответа ты дальше не двигаешься.
@@ -43,12 +41,9 @@ const age = (now: number, t: number): string => {
   return h < 48 ? `${h} ч` : `${Math.round(h / 24)} дн`
 }
 
-const base = (p: string): string => p.split('/').filter(Boolean).pop() ?? p
-
 const line = (q: Question, now: number): string =>
   `#${q.id} ${PRIO_MARK[q.priority]}${q.isBlocking ? '[блокирует] ' : ''}${q.text}  (${age(now, q.createdAt)})`
 
-let dir = ''
 let ownFile = ''
 let sessionId = ''
 let cwd = ''
@@ -63,29 +58,7 @@ const persist = async ($: EngineInterface) => {
 
 const refreshStatus = async ($: EngineInterface) => {
   const mine = sortOpen(await read($, questions)).length
-  const rest = (await read($, others)).reduce((n, s) => n + s.open.length, 0)
-  if (mine === 0 && rest === 0) return $.ui.status(undefined)
-  $.ui.status(`вопросов ко мне: ${mine}` + (rest > 0 ? ` · в других сессиях: ${rest}` : ''))
-}
-
-const scanOthers = async ($: EngineInterface) => {
-  if (dir === '' || !(await $.fs.exists(dir))) return
-  const now = Date.now()
-  const found: OtherSession[] = []
-  for (const ent of await $.fs.list(dir)) {
-    if (ent.kind !== 'file' || !ent.name.endsWith('.json')) continue
-    if (ent.name === `${sessionId}.json` || now - ent.mtimeMs > STALE_MS) continue
-    try {
-      const data = JSON.parse(await $.fs.read(`${dir}/${ent.name}`)) as QFile
-      const open = sortOpen(data.questions ?? [])
-      if (open.length > 0) found.push({ sessionId: data.sessionId, cwd: data.cwd, updatedAt: data.updatedAt, open })
-    } catch {
-      // a file being written right now; next scan reads it
-    }
-  }
-  found.sort((a, b) => b.updatedAt - a.updatedAt)
-  await update($, others, () => found)
-  await refreshStatus($)
+  $.ui.status(mine === 0 ? undefined : `вопросов ко мне: ${mine} · /next-question`)
 }
 
 const openPane = async ($: EngineInterface) => {
@@ -111,8 +84,7 @@ export const register: Register = on => {
     sessionId = await $.session.id()
     cwd = await $.session.cwd()
     const home = (await $.env.get('HOME')) ?? '/tmp'
-    dir = `${home}/.claude/user-questions`
-    ownFile = `${dir}/${sessionId}.json`
+    ownFile = `${home}/.claude/user-questions/${sessionId}.json`
 
     // A resumed session gets its own queue back.
     if ((await read($, questions)).length === 0 && (await $.fs.exists(ownFile))) {
@@ -163,8 +135,8 @@ export const register: Register = on => {
 
     await $.command.register({
       name: 'questions',
-      description: 'Вопросы сессии ко мне. Аргументы: all — все сессии, pane — панель, done N / drop N — закрыть',
-      argumentHint: '[all | pane | done N | drop N]',
+      description: 'Вопросы этой сессии ко мне. pane — открыть панель, close N — закрыть вопрос N вручную',
+      argumentHint: '[pane | close N]',
       immediate: true,
     })
     await $.command.register({
@@ -173,8 +145,6 @@ export const register: Register = on => {
       argumentHint: '[skip]',
     })
 
-    await scanOthers($)
-    $.clock.every(15000, () => scanOthers($))
     if (sortOpen(await read($, questions)).length > 0) void openPane($)
     await refreshStatus($)
 
@@ -233,12 +203,12 @@ export const register: Register = on => {
       await openPane($)
       return { text: 'Панель вопросов открыта.', isTextDisplayOnly: true as const }
     }
-    if (verb === 'done' || verb === 'drop') {
-      const ok = await resolve($, Number(arg), verb === 'done' ? 'answered' : 'dropped', 'закрыт пользователем вручную')
+    if (verb === 'close') {
+      const ok = await resolve($, Number(arg), 'dropped', 'закрыт пользователем вручную')
       return {
         text: ok ? `Вопрос #${arg} закрыт.` : `Открытого вопроса #${arg} нет.`,
         isTextDisplayOnly: true as const,
-        context: ok ? [`Пользователь вручную закрыл вопрос #${arg} из очереди (${verb === 'done' ? 'решён' : 'не актуален'}).`] : [],
+        context: ok ? [`Пользователь вручную закрыл вопрос #${arg} из очереди: ответ на него больше не нужен или получен вне этой сессии. Не задавай его снова.`] : [],
       }
     }
 
@@ -247,18 +217,6 @@ export const register: Register = on => {
       open.length === 0 ? 'В этой сессии открытых вопросов к тебе нет.' : `Вопросов в этой сессии: ${open.length}`,
       ...open.map(q => '  ' + line(q, now)),
     ]
-    if (verb === 'all') {
-      await scanOthers($)
-      const rest = await read($, others)
-      out.push('', rest.length === 0 ? 'В других сессиях открытых вопросов нет.' : 'Другие сессии:')
-      for (const s of rest) {
-        out.push(`  ${base(s.cwd)} [${s.sessionId.slice(0, 8)}] — ${s.open.length}`)
-        for (const q of s.open) out.push('    ' + line(q, now))
-      }
-    } else {
-      const rest = (await read($, others)).reduce((n, s) => n + s.open.length, 0)
-      if (rest > 0) out.push('', `В других сессиях ещё ${rest} — /questions all`)
-    }
     if (open.length > 0) out.push('', 'Разбирать по одному: /next-question')
     return { text: out.join('\n'), isTextDisplayOnly: true as const }
   })
@@ -289,7 +247,7 @@ export const register: Register = on => {
       q.text,
       ...(q.why ? ['', `Зачем: ${q.why}`] : []),
       '',
-      'Ответь сообщением. Дальше: /next-question; отложить: /next-question skip; закрыть без ответа: /questions drop ' + q.id,
+      'Ответь сообщением. Дальше: /next-question; отложить: /next-question skip; закрыть без ответа: /questions close ' + q.id,
     ].join('\n')
     return {
       text,
@@ -304,7 +262,6 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const now = Date.now()
     const open = sortOpen(await read($, questions))
-    const rest = await read($, others)
     const cur = await read($, focus)
     return (
       <Box flexDirection="column">
@@ -318,16 +275,8 @@ export const register: Register = on => {
             <Text dimColor>{age(now, q.createdAt)} назад</Text>
           </Box>
         ))}
-        {rest.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold>Другие сессии</Text>
-            {rest.map(s => (
-              <Text dimColor>{`${base(s.cwd)} [${s.sessionId.slice(0, 8)}]: ${s.open.length}`}</Text>
-            ))}
-          </Box>
-        )}
         <Box marginTop={1}>
-          <Text dimColor>/next-question — по одному · /questions all — все</Text>
+          <Text dimColor>/next-question — разбирать по одному</Text>
         </Box>
       </Box>
     )

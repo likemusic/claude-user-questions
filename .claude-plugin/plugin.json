@@ -1,7 +1,7 @@
 {
   "name": "user-questions",
-  "version": "0.1.0",
-  "description": "Очередь вопросов сессии к пользователю: панель, строка статуса, /questions и /next-question, сводка по всем сессиям",
+  "version": "0.2.0",
+  "description": "Очередь вопросов сессии к пользователю: панель, строка статуса, /questions и /next-question",
   "types": "./types/index.d.ts",
   "author": {
     "name": "likemusic"

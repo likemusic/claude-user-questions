@@ -6,7 +6,6 @@ test('a question is queued, listed and taken one by one', async ($, on) => {
   on('session.cwd', () => ({ value: '/home/u/proj' }))
   on('env.get', () => ({ value: '/home/u' }))
   on('fs.exists', (_, e) => ({ value: files.has((e as { path: string }).path) }))
-  on('fs.list', () => ({ value: [] }))
   on('fs.read', (_, e) => ({ value: files.get((e as { path: string }).path) ?? '' }))
   on('fs.write', (_, e) => {
     const w = e as { path: string; text: string }
@@ -14,7 +13,7 @@ test('a question is queued, listed and taken one by one', async ($, on) => {
     return { value: undefined }
   })
   on('clock.every', () => ({ value: undefined }))
-  on('tool.register', () => ({ value: undefined }))
+  on('tool.register', () => ({ value: undefined }) as never)
   on('command.register', (_, e) => ({ value: { command: (e as { name: string }).name } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -41,4 +40,9 @@ test('a question is queued, listed and taken one by one', async ($, on) => {
   const after = await $.command.run({ command: 'next-question', args: '' } as never)
   expect(after.text).toContain('Urgent one')
   expect(after.text).toContain('из 1')
+
+  const closed = await $.command.run({ command: 'questions', args: 'close 2' } as never)
+  expect(closed.text).toBe('Вопрос #2 закрыт.')
+  const empty = await $.command.run({ command: 'questions', args: '' } as never)
+  expect(empty.text).toContain('открытых вопросов к тебе нет')
 })

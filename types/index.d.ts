@@ -14,18 +14,10 @@ export type Question = {
   answer?: string
 }
 
-export type OtherSession = {
-  sessionId: string
-  cwd: string
-  updatedAt: number
-  open: Question[]
-}
-
 declare module 'claude-code' {
   interface PluginState {
     'user-questions': {
       questions: Shaped<Question[]>
-      others: Shaped<OtherSession[]>
       focus: number
     }
   }
